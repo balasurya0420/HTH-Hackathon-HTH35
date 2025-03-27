@@ -1,0 +1,431 @@
+/* Add these to your src/styles/components.css file */
+
+/* Animations */
+@keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(62, 184, 212, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 20px rgba(62, 184, 212, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(62, 184, 212, 0);
+    }
+  }
+  
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes shimmer {
+    0% {
+      background-position: -100% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  
+  /* Enhanced Memory Bubble Styles */
+  .memory-bubble {
+    position: relative;
+    animation: pulse 2s infinite;
+    background: radial-gradient(circle, rgba(173, 216, 230, 0.7) 0%, rgba(135, 206, 250, 0.5) 100%);
+  }
+  
+  .memory-bubble::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    border-radius: 50%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: shimmer 3s linear infinite;
+    background-size: 200% 100%;
+    z-index: -1;
+  }
+  
+  .memory-bubble::after {
+    content: '';
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    top: 10%;
+    left: 10%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 60%);
+    pointer-events: none;
+  }
+  
+  /* Enhanced Journal Page */
+  .journal-page {
+    background-color: #fffef7;
+    border: 1px solid #e0ddc5;
+  }
+  
+  .binding-ring::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 2px;
+    background-color: #C1B85B;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: -1;
+  }
+  
+  .memory-textarea {
+    background-color: transparent;
+    background-image: linear-gradient(transparent 0, transparent 28px, #e1e1e1 28px);
+    background-size: 100% 29px;
+    line-height: 29px;
+    padding: 0;
+    font-family: 'Courier New', monospace;
+  }
+  
+  /* Card Hover Effects */
+  .memory-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  
+  .memory-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Button Enhancements */
+  .home-button, .preserve-button, .nav-button, .recall-button, .new-memory-button {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+  
+  .home-button::after, .preserve-button::after, .nav-button::after, .recall-button::after, .new-memory-button::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.7s ease;
+  }
+  
+  .home-button:hover::after, .preserve-button:hover::after, .nav-button:hover::after, .recall-button:hover::after, .new-memory-button:hover::after {
+    left: 100%;
+  }
+  
+  /* Loading Animation for Buttons */
+  .button-loading {
+    position: relative;
+    pointer-events: none;
+  }
+  
+  .button-loading::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin-top: -10px;
+    margin-left: -10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  /* Image Hover Effects */
+  .memory-image-circle {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+  }
+  
+  .memory-image-circle:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    z-index: 10;
+  }
+  
+  /* Enhanced Input Field */
+  .query-input {
+    transition: all 0.3s ease;
+  }
+  
+  .query-input:focus {
+    box-shadow: 0 5px 15px rgba(58, 19, 98, 0.15);
+    outline: none;
+  }
+  
+  .query-input::placeholder {
+    color: #aaa;
+    transition: opacity 0.3s ease;
+  }
+  
+  .query-input:focus::placeholder {
+    opacity: 0.5;
+  }
+  
+  /* Memory Text Animation */
+  .memory-text {
+    animation: fade-in 0.8s ease-out;
+  }
+  
+  /* Responsive Navigation for Mobile */
+  @media (max-width: 768px) {
+    .navbar {
+      flex-wrap: wrap;
+    }
+    
+    .logo-container {
+      order: -1;
+      width: 100%;
+      margin-bottom: 10px;
+      justify-content: center;
+    }
+    
+    .navbar-left, .navbar-right {
+      flex: none;
+      width: 50%;
+    }
+    
+    .navbar-left {
+      justify-content: flex-start;
+    }
+    
+    .nav-button, .recall-button {
+      font-size: 14px;
+      padding: 8px 15px;
+    }
+  }
+  
+  /* Loading Indicator for Memory Bubble */
+  .loading-bubble {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .loading-bubble::after {
+    content: '';
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(58, 19, 98, 0.2);
+    border-radius: 50%;
+    border-top-color: #3a1362;
+    animation: spin 1s linear infinite;
+  }
+  
+  /* Memory Input Counter */
+  .character-counter {
+    text-align: right;
+    color: #888;
+    font-size: 14px;
+    margin-top: -15px;
+    margin-bottom: 15px;
+  }
+  
+  .character-counter.limit-near {
+    color: #f39c12;
+  }
+  
+  .character-counter.limit-reached {
+    color: #e74c3c;
+  }
+  
+  /* No Memories State */
+  .no-memories {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    text-align: center;
+    color: #666;
+    padding: 20px;
+  }
+  
+  .no-memories h3 {
+    margin-bottom: 15px;
+    color: #3a1362;
+  }
+  
+  .no-memories p {
+    max-width: 400px;
+    margin-bottom: 20px;
+  }
+  
+  .no-memories-button {
+    background-color: #3a1362;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.3s;
+  }
+  
+  .no-memories-button:hover {
+    background-color: #4a1a7a;
+  }
+  
+  /* Enhanced Background */
+  .app {
+    background: linear-gradient(120deg, #a1c4fd 0%, #c2e9fb 100%);
+    background-size: 400% 400%;
+    animation: gradient-animation 15s ease infinite;
+  }
+  
+  @keyframes gradient-animation {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+  /* Toast Notification Styles */
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+  }
+  
+  .toast {
+    background-color: white;
+    color: #333;
+    padding: 15px 20px;
+    border-radius: 5px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    animation: slide-in 0.3s ease-out;
+    max-width: 300px;
+  }
+  
+  .toast.success {
+    border-left: 4px solid #2ecc71;
+  }
+  
+  .toast.error {
+    border-left: 4px solid #e74c3c;
+  }
+  
+  .toast.info {
+    border-left: 4px solid #3498db;
+  }
+  
+  .toast-close {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    margin-left: 10px;
+    cursor: pointer;
+    color: #999;
+  }
+  
+  @keyframes slide-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  
+  /* Memory card flip animation for homepage */
+  .memory-card-container {
+    perspective: 1000px;
+  }
+  
+  .memory-card {
+    transform-style: preserve-3d;
+    transition: transform 0.6s;
+  }
+  
+  .memory-card.flipped {
+    transform: rotateY(180deg);
+  }
+  
+  .memory-card-front,
+  .memory-card-back {
+    backface-visibility: hidden;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .memory-card-back {
+    transform: rotateY(180deg);
+  }
+  
+  /* Brain logo pulsing animation */
+  .brain-logo {
+    animation: brain-pulse 3s infinite alternate;
+  }
+  
+  @keyframes brain-pulse {
+    from {
+      transform: scale(1);
+    }
+    to {
+      transform: scale(1.1);
+    }
+  }
+  
+  /* Ripple effect for buttons */
+  .ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .ripple:after {
+    content: "";
+    display: block;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    background-image: radial-gradient(circle, #fff 10%, transparent 10.01%);
+    background-repeat: no-repeat;
+    background-position: 50%;
+    transform: scale(10, 10);
+    opacity: 0;
+    transition: transform .3s, opacity 1s;
+  }
+  
+  .ripple:active:after {
+    transform: scale(0, 0);
+    opacity: .3;
+    transition: 0s;
+  }
