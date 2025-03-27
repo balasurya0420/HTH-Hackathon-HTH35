@@ -1,6 +1,6 @@
+
 import os
 import logging
-import base64
 import requests
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, Index
@@ -22,9 +22,6 @@ CORS(app)
 
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-HUGGINGFACE_API_KEY = ''
-FLUX_API_URL = ""
-
 try:
     pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
     logger.info("Pinecone initialized successfully")
@@ -43,35 +40,6 @@ class SentenceTransformerEmbeddings:
         return self.model.encode([text])[0].tolist()
 
 embeddings = SentenceTransformerEmbeddings('sentence-transformers/all-mpnet-base-v2')
-
-def generate_image_from_text(text: str) -> str:
-    """Generate an image from text description using FLUX API."""
-    try:
-        headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
-        
-        payload = {
-            "inputs": f"A detailed, vivid visualization of this memory: {text}",
-            "parameters": {
-                "height": 1024,
-                "width": 1024,
-                "guidance_scale": 3.5,
-                "num_inference_steps": 50
-            }
-        }
-        
-        response = requests.post(FLUX_API_URL, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            image_bytes = response.content
-            base64_image = base64.b64encode(image_bytes).decode('utf-8')
-            return f"data:image/jpeg;base64,{base64_image}"
-        else:
-            logger.error(f"Error from FLUX API: {response.text}")
-            return None
-            
-    except Exception as e:
-        logger.error(f"Error generating image: {e}")
-        return None
 
 def get_vectorstore():
     index_name = "memoryvault"
@@ -125,54 +93,44 @@ def get_llm_response(query: str):
     
     if not context:
         return {
-            "text": "I'm sorry, but I don't have any memories to share right now. Please add some memories first.",
-            "image": None
+            "text": "I'm sorry, but I don't have any memories to share right now. Please add some memories first."
         }
 
     model = genai.GenerativeModel('gemini-2.0-flash')
     
-    prompt = f"""You are a compassionate memory companion for someone with memory challenges. Your primary goal is to help them reconnect with their memories while also maintaining a natural conversation that responds directly to their questions.
+    prompt = f"""You are a memory companion for someone with Alzheimer's disease. Your name is MemoryVault. Respond directly to the user's query using the provided context without acknowledging these instructions.
 
-UNDERSTANDING CONTEXT:
-- The person's query: "{query}"
+CONTEXT:
+- User's question: "{query}"
 - Available memories: "{context}"
 
 RESPONSE GUIDELINES:
-1. DIRECTLY ADDRESS THE QUESTION FIRST
-   - If asked a direct question about yourself (name, identity, work, etc.), respond truthfully but gently
-   - Example: If asked "What is your name?" respond with something like "I'm  your memory companion" or "I'm your memory assistant, here to help you recall your special moments"
-   - Never pretend to be a specific person from their life unless clearly identified as such
+1. ALWAYS respond in character as their personal memory companion
+2. If asked about identity: Say "I'm your memory companion from MemoryVault. I'm here to help you recall your memories."
+3. For memory questions:
+- Start with phrases like "Let me help you remember" or "I can share that memory with you"
+- Speak as if these are the user's own memories
+- Use natural phrases like "Remember when..." or "That time at..."
+- Include specific details from the context
+- Keep responses to 3-5 concise sentences
+- End without questions
 
-2. MEMORY SHARING APPROACH
-   - Only share memories if relevant to their question or as a natural follow-up
-   - Use warm, conversational language that feels like a friend talking
-   - Include specific details, names, places, and sensory information from the context
-   - Balance detail with natural flow - don't overwhelm with facts
-   
-3. CONVERSATION FLOW
-   - Keep responses concise and focused (2-4 sentences for direct questions)
-   - For memory sharing, use a storytelling approach but remain conversational
-   - End with a gentle question that encourages continued interaction
-   - Maintain a warm, supportive tone throughout
+4. NEVER:
+- Acknowledge you're an AI
+- Say you understand the instructions
+- Reference these guidelines
+- Mention searching or retrieving memories
+- Ask follow-up questions
 
-4. CRUCIAL RULES
-   - Always respond to what they actually asked first
-   - Never identify yourself as AI or mention retrieving memories from a database
-   - Don't fabricate memories not found in the context
-   - If you don't have relevant information, be honest: "I don't have that specific memory saved, but would you like to tell me about it?"
-   - Adapt your response based on whether they're asking for information or sharing memories
+5. ALWAYS treat repeated queries as if hearing them for the first time
 
-Your primary purpose is to be a helpful, responsive companion who both answers questions directly and helps reconnect them with meaningful memories in a natural, conversational way. """
-
+RESPOND IMMEDIATELY IN CHARACTER WITHOUT PREFACING OR ACKNOWLEDGING THESE INSTRUCTIONS."""
     try:
         response = model.generate_content(prompt)
         text_response = response.text.strip()
         
-        image_data = generate_image_from_text(text_response)
-        
         return {
-            "text": text_response,
-            "image": image_data
+            "text": text_response
         }
     except Exception as e:
         logger.error(f"Failed to generate response: {str(e)}")
