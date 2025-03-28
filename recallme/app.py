@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -21,64 +20,54 @@ import cv2
 import pickle
 import face_recognition
 import numpy as np
+import requests
 
-# Create the FastAPI app
 app = FastAPI(title="Memory Companion with Face Recognition", description="Integrated API for Memory Companion")
 
-# Configure CORS - Allow the React frontend to access the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Load environment variables
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
 
-# Configure Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    print("WARNING: GEMINI_API_KEY not found in environment variables")
+GEMINI_API_KEY = ""
+HUGGINGFACE_API_KEY = ''
+FLUX_API_URL = ""
+genai.configure(api_key=GEMINI_API_KEY)
 
-# Directories
 AUDIO_DIR = "audio"
 DATA_DIR = "data"
 MEMBER_IMAGES_DIR = "MembersData"
 UNKNOWN_IMAGES_DIR = "UnknownImages"
 IMAGES_DIR = "images"
+IMAGES_OUTPUT_DIR = "memory_images"
 
-# Create directories if they don't exist
-for directory in [AUDIO_DIR, DATA_DIR, MEMBER_IMAGES_DIR, UNKNOWN_IMAGES_DIR, IMAGES_DIR]:
+for directory in [AUDIO_DIR, DATA_DIR, MEMBER_IMAGES_DIR, UNKNOWN_IMAGES_DIR, IMAGES_DIR, IMAGES_OUTPUT_DIR]:
     os.makedirs(directory, exist_ok=True)
 
-# Chat history file
 CHAT_HISTORY_FILE = os.path.join(DATA_DIR, "chat_history.json")
 if not os.path.exists(CHAT_HISTORY_FILE):
     with open(CHAT_HISTORY_FILE, 'w') as f:
         json.dump([], f)
 
-# Audio file paths
 INTRO_FILE = os.path.join(AUDIO_DIR, "intro.mp3")
 
-# Face recognition settings
-FACE_RECOGNITION_TOLERANCE = 0.5  # Lower value means stricter matching
-MODEL = "hog"  # Options: 'hog' (faster) or 'cnn' (more accurate, requires GPU)
+FACE_RECOGNITION_TOLERANCE = 0.5
+MODEL = "hog"
 NUMBER_OF_TIMES_TO_UPSAMPLE = 1
 FACE_LOCATIONS_MODEL = "hog"
 
-# Global variables for face encoding
 encodeListKnown = []
 studentIds = []
 
-# Request models
 class TextToSpeechRequest(BaseModel):
     message: str
     face_image: Optional[str] = None
@@ -87,13 +76,10 @@ class ClearHistoryResponse(BaseModel):
     status: str
     message: str
 
-#================ MEMORY COMPANION FUNCTIONS ================
-
 def load_chat_history():
     try:
         with open(CHAT_HISTORY_FILE, 'r') as f:
             history = json.load(f)
-            # Add IDs to messages if they don't have them
             for i, msg in enumerate(history):
                 if 'id' not in msg:
                     msg['id'] = f"msg-{i}"
@@ -117,10 +103,7 @@ def generate_intro_audio():
 
 def get_gemini_response(prompt, history=None, recognized_person=None):
     try:
-        if not GEMINI_API_KEY:
-            return "I'm sorry, but I can't connect to my AI service right now. Please make sure the GEMINI_API_KEY is configured."
-            
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         system_prompt = """
         You are a compassionate care assistant helping someone with memory recall. Be gentle, empathetic, and thoughtful.
@@ -153,7 +136,6 @@ def get_gemini_response(prompt, history=None, recognized_person=None):
             "max_output_tokens": 300,
         })
         
-        # Clean up response for TTS
         clean_response = response.text.strip()
         
         return clean_response
@@ -161,7 +143,41 @@ def get_gemini_response(prompt, history=None, recognized_person=None):
         print(f"Error with Gemini: {e}")
         return "I'm sorry, I'm having trouble processing that right now. Could you try again?"
 
-#================ FACE RECOGNITION FUNCTIONS ================
+async def generate_image_from_text(prompt):
+    try:
+        headers = {
+            "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "guidance_scale": 7.5,
+                "num_inference_steps": 30,
+                "width": 768,
+                "height": 768
+            }
+        }
+        
+        print(f"Sending request to FLUX API for prompt: {prompt}")
+        response = requests.post(FLUX_API_URL, headers=headers, json=payload)
+        
+        if response.status_code != 200:
+            print(f"Error from FLUX API: {response.status_code}, {response.text}")
+            return None, f"Error: {response.status_code}"
+        
+        image_filename = f"memory_{uuid.uuid4()}.jpg"
+        image_path = os.path.join(IMAGES_OUTPUT_DIR, image_filename)
+        
+        with open(image_path, "wb") as f:
+            f.write(response.content)
+            
+        return image_filename, None
+        
+    except Exception as e:
+        print(f"Error generating image: {str(e)}")
+        return None, str(e)
 
 def load_encodings():
     global encodeListKnown, studentIds
@@ -171,7 +187,6 @@ def load_encodings():
             with open("EncodeFile.p", "rb") as file:
                 encodeListKnownWithIds = pickle.load(file)
             
-            # Ensure encodings are numpy arrays
             encodeListKnown = [np.array(encoding) for encoding in encodeListKnownWithIds[0]]
             studentIds = encodeListKnownWithIds[1]
             print(f"Encode File Loaded Successfully: {len(encodeListKnown)} faces")
@@ -183,24 +198,17 @@ def load_encodings():
         studentIds = []
 
 def preprocess_image(img):
-    # Convert to RGB (face_recognition uses RGB)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
-    # Optional: Enhance contrast for better face detection
-    # Convert to LAB color space
     lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
     
-    # Split the LAB image into L, A, and B channels
     l, a, b = cv2.split(lab)
     
-    # Apply CLAHE to the L channel
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     cl = clahe.apply(l)
     
-    # Merge the CLAHE enhanced L channel with original A and B channels
     enhanced_lab = cv2.merge((cl, a, b))
     
-    # Convert back to RGB
     enhanced_rgb = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2RGB)
     
     return enhanced_rgb
@@ -210,10 +218,8 @@ def find_encodings(img_list):
     failures = 0
     for i, img in enumerate(img_list):
         try:
-            # Preprocess image for better face detection
             processed_img = preprocess_image(img)
             
-            # Detect face locations with more aggressive detection
             face_locations = face_recognition.face_locations(
                 processed_img, 
                 model=FACE_LOCATIONS_MODEL, 
@@ -225,11 +231,10 @@ def find_encodings(img_list):
                 failures += 1
                 continue
                 
-            # Get all face encodings
             face_encodings = face_recognition.face_encodings(
                 processed_img, 
                 face_locations, 
-                num_jitters=2,  # Multiple samples for more accurate encoding
+                num_jitters=2,
                 model=MODEL
             )
             
@@ -238,7 +243,6 @@ def find_encodings(img_list):
                 failures += 1
                 continue
             
-            # Take the first face encoding
             encode = face_encodings[0]
             encode_list.append(encode)
             print(f"Successfully encoded face {i+1}")
@@ -296,7 +300,6 @@ def generate_encodings():
         pickle.dump(encode_list_known_with_ids, file)
     print("File Saved")
     
-    # Update global variables
     encodeListKnown = encode_list_known
     studentIds = student_ids
     
@@ -306,14 +309,11 @@ def find_best_match(face_encoding, known_encodings, known_ids, tolerance=FACE_RE
     if not known_encodings:
         return "Unknown", 1.0
         
-    # Calculate face distances
     face_distances = face_recognition.face_distance(known_encodings, face_encoding)
     
-    # Find best match index
     best_match_index = np.argmin(face_distances)
     best_match_distance = face_distances[best_match_index]
     
-    # If distance is below tolerance, return the ID
     if best_match_distance <= tolerance:
         return known_ids[best_match_index], best_match_distance
     else:
@@ -323,7 +323,6 @@ def is_duplicate_image(new_img_path, threshold=100):
     if not os.path.exists(UNKNOWN_IMAGES_DIR):
         return False
         
-    # Get list of existing unknown images
     unknown_images = [f for f in os.listdir(UNKNOWN_IMAGES_DIR) 
                     if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     
@@ -348,19 +347,12 @@ def is_duplicate_image(new_img_path, threshold=100):
                 
     return False
 
-#================ API ENDPOINTS ================
-
-# Initialize the app on startup
 @app.on_event("startup")
 async def startup_event():
     print("Starting up the server...")
-    # Load face encodings
     load_encodings()
-    # Generate intro audio
     generate_intro_audio()
     print("Server initialization complete")
-
-#-------- Memory Companion Endpoints --------
 
 @app.post("/speech-to-text")
 async def speech_to_text(audio: UploadFile = File(...)):
@@ -369,21 +361,16 @@ async def speech_to_text(audio: UploadFile = File(...)):
         
     recognizer = sr.Recognizer()
     
-    # Create a temporary file in binary write mode
     temp_file = None
     try:
-        # Save the file to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False)
-        temp_file.close()  # Close the file handle immediately
+        temp_file.close()
         
-        # Read the file content
         audio_content = await audio.read()
         
-        # Write to the temporary file
         with open(temp_file.name, 'wb') as f:
             f.write(audio_content)
         
-        # Try direct recognition with Google API
         try:
             with sr.AudioFile(temp_file.name) as source:
                 audio_data = recognizer.record(source)
@@ -398,11 +385,10 @@ async def speech_to_text(audio: UploadFile = File(...)):
         print(f"File handling error: {str(e)}")
         return JSONResponse({"status": "error", "message": "Failed to process audio file"}, status_code=500)
     finally:
-        # Clean up temporary file - use try/except to handle any file access errors
         if temp_file:
             try:
                 import time
-                time.sleep(0.1)  # Small delay to ensure file is not in use
+                time.sleep(0.1)
                 os.unlink(temp_file.name)
             except Exception as e:
                 print(f"Warning: Could not delete temporary file: {str(e)}")
@@ -420,15 +406,11 @@ async def text_to_speech(request: Request):
     if not message:
         return JSONResponse({"status": "error", "message": "No message provided"}, status_code=400)
     
-    # Get recognized person from face image if provided
     recognized_person = None
     confidence = 0
     
     if face_image:
-        # Process the face image (base64 encoded)
         try:
-            # Convert base64 to image
-            # Remove the data URL prefix if present
             if "," in face_image:
                 face_image = face_image.split(",")[1]
                 
@@ -437,7 +419,6 @@ async def text_to_speech(request: Request):
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
             if img is not None:
-                # Process image for face recognition
                 processed_img = preprocess_image(img)
                 face_locations = face_recognition.face_locations(
                     processed_img, 
@@ -459,7 +440,6 @@ async def text_to_speech(request: Request):
                         recognized_person, match_distance = find_best_match(face_encodings[0], encodeListKnown, studentIds)
                         confidence = max(0, min(100, int((1 - match_distance) * 100)))
                         
-                        # Store unknown face if confidence is low
                         if recognized_person == "Unknown":
                             try:
                                 filename = f"unknown_{uuid.uuid4()}.jpg"
@@ -481,7 +461,6 @@ async def text_to_speech(request: Request):
     
     chat_history = load_chat_history()
     
-    # Add user message to history with a unique ID
     user_message_id = f"user-{uuid.uuid4()}"
     userMessage = {
         "id": user_message_id,
@@ -491,10 +470,8 @@ async def text_to_speech(request: Request):
     }
     chat_history.append(userMessage)
     
-    # Generate response
     response = get_gemini_response(message, chat_history, recognized_person)
     
-    # Add assistant response to history with a unique ID
     assistant_message_id = f"assistant-{uuid.uuid4()}"
     assistantMessage = {
         "id": assistant_message_id,
@@ -504,10 +481,8 @@ async def text_to_speech(request: Request):
     }
     chat_history.append(assistantMessage)
     
-    # Save updated history
     save_chat_history(chat_history)
     
-    # Generate speech
     speech_filename = f"response_{len(chat_history)}.mp3"
     speech_filepath = os.path.join(AUDIO_DIR, speech_filename)
     
@@ -578,13 +553,7 @@ async def get_narrative():
         }, status_code=400)
     
     try:
-        if not GEMINI_API_KEY:
-            return JSONResponse({
-                "status": "error", 
-                "message": "GEMINI_API_KEY not configured"
-            }, status_code=500)
-            
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         narrative_prompt = """
         You are a compassionate storyteller and reminiscence therapist. Your task is to craft a deeply personal 
@@ -598,7 +567,7 @@ async def get_narrative():
         and the things that bring them happiness. The final story should feel comforting, affirming, and personal.
         
         Separate the story into 3-5 distinct sections, each focused on a different aspect or memory.
-        Return these sections separated by -- symbols.
+        Return these sections separated by bueatiful things.
         """
         
         history_text = "\n".join([f"{'User' if msg['role'] == 'user' else 'Assistant'}: {msg['content']}" for msg in chat_history])
@@ -614,11 +583,26 @@ async def get_narrative():
         
         narrative = response.text.strip()
         
-        # Split into chapters
         chapters = narrative.split("--")
         chapters = [chapter.strip() for chapter in chapters if chapter.strip()]
         
-        return JSONResponse({"chapters": chapters})
+        image_prompt_text = f"""
+        Generate a beautiful, emotionally resonant image representing this personal memory:
+        {chapters[0] if chapters else narrative}
+        
+        Style: warm, nostalgic, soft lighting, comforting
+        """
+        
+        image_filename, error = await generate_image_from_text(image_prompt_text)
+        
+        if error:
+            print(f"Error generating image: {error}")
+            return JSONResponse({"chapters": chapters})
+        else:
+            return JSONResponse({
+                "chapters": chapters, 
+                "memory_image": f"/get-memory-image/{image_filename}"
+            })
     
     except Exception as e:
         print(f"Error generating narrative: {e}")
@@ -627,15 +611,24 @@ async def get_narrative():
             "message": f"Failed to generate narrative summary: {str(e)}"
         }, status_code=500)
 
-#-------- Face Recognition Endpoints --------
+@app.get("/get-memory-image/{filename}")
+async def get_memory_image(filename: str):
+    file_path = os.path.join(IMAGES_OUTPUT_DIR, filename)
+    
+    if not os.path.exists(file_path):
+        return JSONResponse({"status": "error", "message": "Image file not found"}, status_code=404)
+    
+    try:
+        return FileResponse(file_path, media_type='image/jpeg')
+    except Exception as e:
+        print(f"Error sending image file: {e}")
+        return JSONResponse({"status": "error", "message": "Failed to send image file"}, status_code=500)
 
 @app.post("/detect-face/")
 async def detect_face(file: UploadFile = File(...)):
-    # Check if any encodings are available
     if not encodeListKnown:
         return JSONResponse({"recognized_person": "No encodings available", "confidence": 0})
 
-    # Read image bytes
     image_bytes = await file.read()
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -643,10 +636,8 @@ async def detect_face(file: UploadFile = File(...)):
     if img is None:
         return JSONResponse({"recognized_person": "Invalid image", "confidence": 0})
 
-    # Preprocess the image
     processed_img = preprocess_image(img)
     
-    # Detect face locations with multiple upsampling for better detection
     faceCurFrame = face_recognition.face_locations(
         processed_img, 
         model=FACE_LOCATIONS_MODEL,
@@ -656,39 +647,31 @@ async def detect_face(file: UploadFile = File(...)):
     if not faceCurFrame:
         return JSONResponse({"recognized_person": "No face detected", "confidence": 0})
     
-    # Get the largest face (assuming it's the main subject)
     largest_face = max(faceCurFrame, key=lambda rect: (rect[2] - rect[0]) * (rect[1] - rect[3]))
     
-    # Encode the face with multiple samples for better accuracy
     encodeCurFrame = face_recognition.face_encodings(
         processed_img, 
         [largest_face], 
-        num_jitters=2,  # Multiple samples for more accurate encoding
+        num_jitters=2,
         model=MODEL
     )
     
     if not encodeCurFrame:
         return JSONResponse({"recognized_person": "Failed to encode face", "confidence": 0})
 
-    # Find the best match
     recognized_person, match_distance = find_best_match(encodeCurFrame[0], encodeListKnown, studentIds)
     
-    # Calculate confidence (1.0 is worst match, 0.0 is perfect match)
     confidence = max(0, min(100, int((1 - match_distance) * 100)))
     
     print(f"Recognized: {recognized_person}, Confidence: {confidence}%")
     
-    # If face is not recognized with sufficient confidence, store it in unknown faces
     if recognized_person == "Unknown" and faceCurFrame:
         try:
-            # Generate unique filename
             filename = f"unknown_{uuid.uuid4()}.jpg"
             filepath = os.path.join(UNKNOWN_IMAGES_DIR, filename)
             
-            # Save file temporarily
             cv2.imwrite(filepath, img)
             
-            # Check if this is a duplicate of an existing unknown image
             if is_duplicate_image(filepath):
                 os.remove(filepath)
                 print("Duplicate unknown face detected - not storing")
@@ -709,15 +692,12 @@ async def store_member_image(
     file: UploadFile = File(...), 
     memberId: str = Form(...)
 ):
-    # Generate unique filename
     filename = f"{memberId}_{uuid.uuid4()}.jpg"
     member_dir = os.path.join(MEMBER_IMAGES_DIR, str(memberId))
     filepath = os.path.join(member_dir, filename)
     
-    # Ensure member directory exists
     os.makedirs(member_dir, exist_ok=True)
     
-    # Save file
     content = await file.read()
     with open(filepath, "wb") as buffer:
         buffer.write(content)
@@ -726,11 +706,9 @@ async def store_member_image(
 
 @app.post("/store-unknown-image/")
 async def store_unknown_image(file: UploadFile = File(...)):
-    # Generate unique filename
     filename = f"unknown_{uuid.uuid4()}.jpg"
     filepath = os.path.join(UNKNOWN_IMAGES_DIR, filename)
     
-    # Save file
     content = await file.read()
     with open(filepath, "wb") as buffer:
         buffer.write(content)
@@ -761,7 +739,6 @@ async def delete_image(member_id: str, filename: str):
 
 @app.get("/get-unknown-images/")
 async def get_unknown_images():
-    """Get list of all unknown images"""
     try:
         if not os.path.exists(UNKNOWN_IMAGES_DIR):
             return JSONResponse({"images": []})
@@ -777,17 +754,14 @@ async def get_unknown_images():
 
 @app.get("/get-unknown-image/{filename}")
 async def get_unknown_image(filename: str):
-    """Get a specific unknown image file"""
     file_path = os.path.join(UNKNOWN_IMAGES_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Image not found")
     
-    # Return the image file
     return FileResponse(file_path)
 
 @app.delete("/delete-unknown-image/{filename}")
 async def delete_unknown_image(filename: str):
-    """Delete an unknown image"""
     file_path = os.path.join(UNKNOWN_IMAGES_DIR, filename)
     
     try:
@@ -796,12 +770,10 @@ async def delete_unknown_image(filename: str):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
 
-# Endpoint to regenerate encodings
 @app.post("/generate-encodings/")
 async def api_generate_encodings():
     return generate_encodings()
 
-# Endpoint to add a single image to the encodings
 @app.post("/add-face-encoding/")
 async def add_face_encoding(
     file: UploadFile = File(...),
@@ -809,7 +781,6 @@ async def add_face_encoding(
 ):
     global encodeListKnown, studentIds
     
-    # Read image bytes
     image_bytes = await file.read()
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -817,12 +788,10 @@ async def add_face_encoding(
     if img is None:
         return JSONResponse({"status": "error", "message": "Invalid image"})
     
-    # Save to images directory
     filename = f"{person_id}.jpg"
     filepath = os.path.join(IMAGES_DIR, filename)
     cv2.imwrite(filepath, img)
     
-    # Generate encoding for this image
     processed_img = preprocess_image(img)
     face_locations = face_recognition.face_locations(
         processed_img, 
@@ -836,24 +805,20 @@ async def add_face_encoding(
     face_encodings = face_recognition.face_encodings(
         processed_img, 
         face_locations,
-        num_jitters=3,  # Multiple samples for more accurate encoding
+        num_jitters=3,
         model=MODEL
     )
     
     if not face_encodings:
         return JSONResponse({"status": "error", "message": "Failed to encode face"})
     
-    # Add to current encodings
     if person_id in studentIds:
-        # Replace existing encoding
         idx = studentIds.index(person_id)
         encodeListKnown[idx] = face_encodings[0]
     else:
-        # Add new encoding
         encodeListKnown.append(face_encodings[0])
         studentIds.append(person_id)
     
-    # Save updated encodings
     encode_list_known_with_ids = [encodeListKnown, studentIds]
     with open("EncodeFile.p", "wb") as file:
         pickle.dump(encode_list_known_with_ids, file)
@@ -862,12 +827,10 @@ async def add_face_encoding(
 
 @app.get("/list-encoded-faces/")
 async def list_encoded_faces():
-    """List all encoded faces"""
     return JSONResponse({"faces": studentIds, "count": len(studentIds)})
 
 @app.get("/health/")
 async def health_check():
-    """Health check endpoint for the service"""
     return JSONResponse({
         "status": "Service is running", 
         "encoded_faces": len(encodeListKnown),
