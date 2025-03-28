@@ -38,9 +38,9 @@
 # except ImportError:
 #     pass
 
-# GEMINI_API_KEY = "AIzaSyDtfwLW7VxE6CKM17LtqjyvvmuVi8b-278"
-# HUGGINGFACE_API_KEY = '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'
-# FLUX_API_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev"
+# GEMINI_API_KEY =
+# HUGGINGFACE_API_KEY = 
+# FLUX_API_URL = 
 # genai.configure(api_key=GEMINI_API_KEY)
 
 # AUDIO_DIR = "audio"
@@ -914,7 +914,7 @@ try:
 except ImportError:
     pass
 
-GEMINI_API_KEY = "AIzaSyDtfwLW7VxE6CKM17LtqjyvvmuVi8b-278"
+GEMINI_API_KEY = ""
 genai.configure(api_key=GEMINI_API_KEY)
 
 AUDIO_DIR = "audio"
